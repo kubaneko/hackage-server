@@ -1,4 +1,4 @@
-# Hackage-server
+# hackage-server
 
 [![Build Status](https://travis-ci.org/haskell/hackage-server.png?branch=master)](https://travis-ci.org/haskell/hackage-server)
 [![Build status](https://github.com/haskell/hackage-server/actions/workflows/haskell-ci.yml/badge.svg)](https://github.com/haskell/hackage-server/actions/workflows/haskell-ci.yml)
