@@ -359,6 +359,7 @@ library lib-server
       Distribution.Server.Features.StaticFiles
       Distribution.Server.Features.ServerIntrospect
       Distribution.Server.Features.Sitemap
+      Distribution.Server.Features.PackageRank
 
   if flag(debug)
     cpp-options: -DDEBUG
