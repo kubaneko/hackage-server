@@ -15,6 +15,9 @@ import Distribution.Server.Features.DownloadCount
 import Distribution.Server.Features.Tags
 import Distribution.Server.Features.Users
 import Distribution.Server.Features.Upload(UploadFeature(..))
+import Distribution.Server.Features.Documentation (DocumentationFeature(..))
+import Distribution.Server.Features.TarIndexCache (TarIndexCacheFeature(..))
+
 import Distribution.Server.Users.Users (userIdToName)
 import qualified Distribution.Server.Users.UserIdSet as UserIdSet
 import Distribution.Server.Users.Group(UserGroup(..), GroupDescription(..))
@@ -38,7 +41,6 @@ import qualified Data.Map as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Time.Clock (UTCTime(..))
-
 
 data ListFeature = ListFeature {
     listFeatureInterface :: HackageFeature,
@@ -108,6 +110,8 @@ initListFeature :: ServerEnv
                     -> VersionsFeature
                     -> UserFeature
                     -> UploadFeature
+                    -> DocumentationFeature
+                    -> TarIndexCacheFeature
                     -> IO ListFeature)
 initListFeature _env = do
     itemCache  <- newMemStateWHNF Map.empty
@@ -120,11 +124,12 @@ initListFeature _env = do
               tagsf@TagsFeature{..}
               versions@VersionsFeature{..}
               users@UserFeature{..}
-              uploads@UploadFeature{..} -> do
+              uploads@UploadFeature{..} 
+              docum tar -> do
 
       let (feature, modifyItem, updateDesc) =
             listFeature core download votesf tagsf versions users uploads
-                        itemCache itemUpdate
+                        itemCache itemUpdate docum tar _env
 
       registerHookJust packageChangeHook isPackageChangeAny $ \(pkgid, _) ->
         updateDesc (packageName pkgid)
@@ -180,6 +185,9 @@ listFeature :: CoreFeature
             -> UploadFeature
             -> MemState (Map PackageName PackageItem)
             -> Hook (Set PackageName) ()
+            -> DocumentationFeature
+            -> TarIndexCacheFeature
+            -> ServerEnv
             -> (ListFeature,
                 PackageName -> (PackageItem -> PackageItem) -> IO (),
                 PackageName -> IO ())
@@ -192,6 +200,7 @@ listFeature CoreFeature{..}
             UserFeature{..}
             UploadFeature{..}
             itemCache itemUpdate
+            docum tar env
   = (ListFeature{..}, modifyItem, updateDesc)
   where
     listFeatureInterface = (emptyHackageFeature "list") {
@@ -222,7 +231,7 @@ listFeature CoreFeature{..}
                 let pkgs = PackageIndex.lookupPackageName index pkgname
                 case pkgs of
                     [] -> return () --this shouldn't happen
-                    _  -> modifyMemState itemCache . uncurry Map.insert =<< constructItem (last pkgs)
+                    _  -> modifyMemState itemCache . uncurry Map.insert =<< constructItem pkgs
 
     updateDesc pkgname = do
         index <- queryGetPackageIndex
@@ -243,12 +252,13 @@ listFeature CoreFeature{..}
     constructItemIndex :: IO (Map PackageName PackageItem)
     constructItemIndex = do
         index <- queryGetPackageIndex
-        items <- mapM (constructItem . last) $ PackageIndex.allPackagesByName index
+        items <- mapM constructItem $ PackageIndex.allPackagesByName index
         return $ Map.fromList items
 
-    constructItem :: PkgInfo -> IO (PackageName, PackageItem)
-    constructItem pkg = do
+    constructItem :: [PkgInfo] -> IO (PackageName, PackageItem)
+    constructItem pkgs = do
         let pkgname = packageName pkg
+            pkg = last pkgs
         -- [reverse index disabled] revCount <- query . GetReverseCount $ pkgname
         users <- queryGetUserDb
         tags  <- queryTagsForPackage pkgname
