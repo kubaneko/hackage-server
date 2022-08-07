@@ -17,6 +17,7 @@ import Distribution.Server.Features.Users
 import Distribution.Server.Features.Upload(UploadFeature(..))
 import Distribution.Server.Features.Documentation (DocumentationFeature(..))
 import Distribution.Server.Features.TarIndexCache (TarIndexCacheFeature(..))
+import Distribution.Server.Features.PackageRank
 
 import Distribution.Server.Users.Users (userIdToName)
 import qualified Distribution.Server.Users.UserIdSet as UserIdSet
@@ -87,18 +88,20 @@ data PackageItem = PackageItem {
     -- How many benchmarks (>=0) this package has.
     itemNumBenchmarks :: !Int,
     -- Last upload date
-    itemLastUpload :: !UTCTime
+    itemLastUpload :: !UTCTime,
     -- Hotness: a more heuristic way to sort packages. presently non-existent.
-  --itemHotness :: Int
+    --itemHotness :: Int
+    -- heuristic way to sort packages
+    itemPackageRank :: !Double
 }
 
 instance MemSize PackageItem where
-    memSize (PackageItem a b c d e f g h i j k l) = memSize12 a b c d e f g h i j k l
+    memSize (PackageItem a b c d e f g h i j k l m) = memSize13 a b c d e f g h i j k l m
 
 
 emptyPackageItem :: PackageName -> PackageItem
 emptyPackageItem pkg = PackageItem pkg Set.empty Nothing "" []
-                                   0 0 False 0 0 0 (UTCTime (toEnum 0) 0)
+                                   0 0 False 0 0 0 (UTCTime (toEnum 0) 0) 0
 
 
 initListFeature :: ServerEnv
@@ -125,11 +128,11 @@ initListFeature _env = do
               versions@VersionsFeature{..}
               users@UserFeature{..}
               uploads@UploadFeature{..} 
-              docum tar -> do
+              documentation tar -> do
 
       let (feature, modifyItem, updateDesc) =
             listFeature core download votesf tagsf versions users uploads
-                        itemCache itemUpdate docum tar _env
+                        itemCache itemUpdate documentation tar _env
 
       registerHookJust packageChangeHook isPackageChangeAny $ \(pkgid, _) ->
         updateDesc (packageName pkgid)
@@ -196,11 +199,11 @@ listFeature CoreFeature{..}
             DownloadFeature{..}
             VotesFeature{..}
             TagsFeature{..}
-            VersionsFeature{..}
+            versions@VersionsFeature{..}
             UserFeature{..}
             UploadFeature{..}
             itemCache itemUpdate
-            docum tar env
+            documentation tar env
   = (ListFeature{..}, modifyItem, updateDesc)
   where
     listFeatureInterface = (emptyHackageFeature "list") {
@@ -266,6 +269,8 @@ listFeature CoreFeature{..}
         votes <- pkgNumScore pkgname
         deprs <- queryGetDeprecatedFor pkgname
         maintainers <- queryUserGroup (maintainersGroup pkgname)
+        packageR <- rankPackage versions (cmFind pkgname downs)
+            (UserIdSet.size maintainers) documentation tar env pkgs 
 
         return $ (,) pkgname $ (updateDescriptionItem (pkgDesc pkg) $ emptyPackageItem pkgname) {
             itemTags       = tags
@@ -275,6 +280,7 @@ listFeature CoreFeature{..}
             -- [reverse index disabled] , itemRevDepsCount = directReverseCount revCount
           , itemVotes      = votes
           , itemLastUpload = fst (pkgOriginalUploadInfo pkg)
+          , itemPackageRank = packageR
           }
 
     ------------------------------
