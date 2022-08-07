@@ -92,7 +92,7 @@ data PackageItem = PackageItem {
     -- Hotness: a more heuristic way to sort packages. presently non-existent.
     --itemHotness :: Int
     -- heuristic way to sort packages
-    itemPackageRank :: !Double
+    itemPackageRank :: !Float
 }
 
 instance MemSize PackageItem where
