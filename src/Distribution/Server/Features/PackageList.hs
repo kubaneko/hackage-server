@@ -34,6 +34,7 @@ import Distribution.Package
 import Distribution.PackageDescription
 import Distribution.PackageDescription.Configuration
 import Distribution.Utils.ShortText (fromShortText)
+import Distribution.Simple.Utils (safeLast)
 
 import Control.Concurrent
 import Data.Maybe (mapMaybe)
@@ -269,8 +270,8 @@ listFeature CoreFeature{..}
         votes <- pkgNumScore pkgname
         deprs <- queryGetDeprecatedFor pkgname
         maintainers <- queryUserGroup (maintainersGroup pkgname)
-        packageR <- rankPackage versions (cmFind pkgname downs)
-            (UserIdSet.size maintainers) documentation tar env pkgs 
+        packageR <- rankPackage versions (cmFind pkgname downs) 
+            (UserIdSet.size maintainers) documentation tar env pkgs (safeLast pkgs)
 
         return $ (,) pkgname $ (updateDescriptionItem (pkgDesc pkg) $ emptyPackageItem pkgname) {
             itemTags       = tags
