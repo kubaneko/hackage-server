@@ -34,9 +34,10 @@ import Distribution.Package
 import Distribution.PackageDescription
 import Distribution.PackageDescription.Configuration
 import Distribution.Utils.ShortText (fromShortText)
-import Distribution.Simple.Utils (safeLast)
 
 import Control.Concurrent
+import qualified Data.List.NonEmpty as NE
+import Data.List.NonEmpty (NonEmpty)
 import Data.Maybe (mapMaybe)
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -233,9 +234,9 @@ listFeature CoreFeature{..}
             False -> do
                 index <- queryGetPackageIndex
                 let pkgs = PackageIndex.lookupPackageName index pkgname
-                case pkgs of
-                    [] -> return () --this shouldn't happen
-                    _  -> modifyMemState itemCache . uncurry Map.insert =<< constructItem pkgs
+                case NE.nonEmpty pkgs of
+                    Nothing -> return () --this shouldn't happen
+                    Just ne -> modifyMemState itemCache . uncurry Map.insert =<< constructItem ne
 
     updateDesc pkgname = do
         index <- queryGetPackageIndex
@@ -256,13 +257,14 @@ listFeature CoreFeature{..}
     constructItemIndex :: IO (Map PackageName PackageItem)
     constructItemIndex = do
         index <- queryGetPackageIndex
-        items <- mapM constructItem $ PackageIndex.allPackagesByName index
-        return $ Map.fromList items
+        let byName = PackageIndex.allPackagesByNameNE index
+        mPkgInfos <- traverse (mapM constructItem) (NE.nonEmpty byName)
+        pure $ foldMap (Map.fromList . NE.toList) mPkgInfos
 
-    constructItem :: [PkgInfo] -> IO (PackageName, PackageItem)
+    constructItem :: NonEmpty PkgInfo -> IO (PackageName, PackageItem)
     constructItem pkgs = do
         let pkgname = packageName pkg
-            pkg = last pkgs
+            pkg = NE.last pkgs
         -- [reverse index disabled] revCount <- query . GetReverseCount $ pkgname
         users <- queryGetUserDb
         tags  <- queryTagsForPackage pkgname
@@ -271,7 +273,7 @@ listFeature CoreFeature{..}
         deprs <- queryGetDeprecatedFor pkgname
         maintainers <- queryUserGroup (maintainersGroup pkgname)
         packageR <- rankPackage versions (cmFind pkgname downs) 
-            (UserIdSet.size maintainers) documentation tar env pkgs (safeLast pkgs)
+            (UserIdSet.size maintainers) documentation tar env pkgs
 
         return $ (,) pkgname $ (updateDescriptionItem (pkgDesc pkg) $ emptyPackageItem pkgname) {
             itemTags       = tags

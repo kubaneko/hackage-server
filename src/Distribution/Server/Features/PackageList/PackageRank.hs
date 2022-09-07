@@ -31,6 +31,8 @@ import           Control.Exception              ( SomeException(..)
 import qualified Data.ByteString.Lazy          as BSL
 import           Data.List                      ( maximumBy
                                                 , sortBy )
+import qualified Data.List.NonEmpty as NE
+import           Data.List.NonEmpty             ( NonEmpty )
 import           Data.Maybe                     ( isNothing )
 import           Data.Ord                       ( comparing )
 import qualified Data.Time.Clock               as CL
@@ -299,11 +301,9 @@ rankPackage
   -> DocumentationFeature
   -> TarIndexCacheFeature
   -> ServerEnv
-  -> [PkgInfo]
-  -> Maybe PkgInfo
+  -> NonEmpty PkgInfo
   -> IO Float
-rankPackage _ _ _ _ _ _ _ Nothing = return 0
-rankPackage versions recentDownloads maintainers docs tarCache env pkgs (Just pkgUsed)
+rankPackage versions recentDownloads maintainers docs tarCache env pkgs
   = do
     t <- temporalScore pkgD uploads versionList recentDownloads
 
@@ -320,6 +320,7 @@ rankPackage versions recentDownloads maintainers docs tarCache env pkgs (Just pk
       Nothing -> 1
       _       -> 0.2
  where
+  pkgUsed = NE.last pkgs
   pkgname = pkgName . package $ pkgD
   pkgD    = packageDescription . pkgDesc $ pkgUsed
   deprP   = queryGetDeprecatedFor versions pkgname
@@ -327,8 +328,8 @@ rankPackage versions recentDownloads maintainers docs tarCache env pkgs (Just pk
 
   versionList :: [Version]
   versionList = sortBy (flip compare)
-    $ map (pkgVersion . package . packageDescription) (pkgDesc <$> pkgs)
+    $ map (pkgVersion . package . packageDescription . pkgDesc) (NE.toList pkgs)
   uploads =
     sortBy (flip compare)
-      $  (fst . pkgOriginalUploadInfo <$> pkgs)
-      ++ (fst . pkgLatestUploadInfo <$> pkgs)
+      $  (fst . pkgOriginalUploadInfo <$> NE.toList pkgs)
+      ++ (fst . pkgLatestUploadInfo <$> NE.toList pkgs)
